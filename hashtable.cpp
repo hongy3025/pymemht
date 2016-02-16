@@ -5,15 +5,9 @@
 #include <errno.h>
 #include <assert.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 #include "hashtable.h"
 
-#ifdef __cplusplus
-}
-#endif
+#define ALLOC(type, n) ((type *)malloc(sizeof(type) * n))
 
 #define ht_flag_base(ht) ((char *)(ht) + (ht)->flag_offset)
 #define ht_bucket_base(ht) ((char *)(ht) + (ht)->bucket_offset)
@@ -23,6 +17,7 @@ static const unsigned ht_magic = 0xBFBF;
 enum bucket_flag {
     empty = 0, used = 1, removed = 2
 };
+
 
 size_t header_size = 1024;
 
@@ -43,7 +38,7 @@ static const unsigned int primes[] = {
 };
 static const unsigned int prime_table_length = sizeof (primes) / sizeof (primes[0]);
 
-static inline void fill_ht_str(ht_str *s, const char *str, const u_int32 size) {
+static inline void fill_ht_str(ht_str *s, const char *str, const uint32_t size) {
     s->size = size;
     memcpy(s->str, str, size);
 }
@@ -76,13 +71,13 @@ static unsigned int dbj2_hash (const char *str, size_t size) {
     return (unsigned int) hash;
 }
 
-BOOL is_equal(const char *a, size_t asize, const char *b, size_t bsize) {
+bool is_equal(const char *a, size_t asize, const char *b, size_t bsize) {
     if (asize != bsize)
-        return False;
-    return strncmp(a, b, asize) ? False : True;
+        return false;
+    return strncmp(a, b, asize) ? false : true;
 }
 
-int ht_is_valid(hashtable *ht) {
+bool ht_is_valid(hashtable *ht) {
     return (ht->magic == ht_magic);
 }
 
@@ -109,14 +104,14 @@ hashtable* ht_init(void *base_addr, size_t capacity, int force_init) {
     return ht;
 }
 
-static size_t ht_position(hashtable *ht, const char *key, u_int32 key_size, BOOL treat_removed_as_empty) {
+static size_t ht_position(hashtable *ht, const char *key, uint32_t key_size, bool treat_removed_as_empty) {
     char *flag_base = ht_flag_base(ht);
     char *bucket_base = ht_bucket_base(ht);
     size_t capacity = ht->capacity;
     unsigned long hval = dbj2_hash(key, key_size) % capacity;
 
     size_t i = hval, di = 1;
-    while (True) {
+    while (true) {
         if (flag_base[i] == empty)
             break;
         if (flag_base[i] == removed && treat_removed_as_empty)
@@ -140,8 +135,8 @@ static size_t ht_position(hashtable *ht, const char *key, u_int32 key_size, BOOL
     return i;
 }
 
-ht_str* ht_get(hashtable *ht, const char *key, u_int32 key_size) {
-    size_t i = ht_position(ht, key, key_size, False); //'removed' bucket is not 'empty' when searching a chain.
+ht_str* ht_get(hashtable *ht, const char *key, uint32_t key_size) {
+    size_t i = ht_position(ht, key, key_size, false); //'removed' bucket is not 'empty' when searching a chain.
     if (ht_flag_base(ht)[i] != used) {
         return NULL;
     }
@@ -149,11 +144,11 @@ ht_str* ht_get(hashtable *ht, const char *key, u_int32 key_size) {
     return (ht_str*)(bucket + max_key_size);
 }
 
-int ht_set(hashtable *ht, const char *key, u_int32 key_size, const char *value, u_int32 value_size) {
-    if (sizeof(u_int32) + key_size >= max_key_size || sizeof(u_int32) + value_size >= max_value_size) {
+bool ht_set(hashtable *ht, const char *key, uint32_t key_size, const char *value, uint32_t value_size) {
+    if (sizeof(uint32_t) + key_size >= max_key_size || sizeof(uint32_t) + value_size >= max_value_size) {
         //the item is too large
         fprintf(stderr, "the item is too large: key_size(%u), value(%u)\n", key_size, value_size);
-        return False;
+        return false;
     }
 
     char *flag_base = ht_flag_base(ht);
@@ -165,16 +160,16 @@ int ht_set(hashtable *ht, const char *key, u_int32 key_size, const char *value, 
     bucket_value = ht_get(ht, key, key_size);
     if (bucket_value) { 
         fill_ht_str(bucket_value, value, value_size);
-        return True;
+        return true;
     }
 
     //else: find an available bucket, which can be both 'empty' or 'removed'
-    size_t i = ht_position(ht, key, key_size, True);
+    size_t i = ht_position(ht, key, key_size, true);
 
     if (ht->capacity * max_load_factor < ht->size) {
         //hash table is over loaded
         fprintf(stderr, "hash table is over loaded, capacity=%lu, size=%lu\n", ht->capacity, ht->size);
-        return False;
+        return false;
     }
 
     ht->size += 1;
@@ -185,26 +180,29 @@ int ht_set(hashtable *ht, const char *key, u_int32 key_size, const char *value, 
     bucket_value = (ht_str*)(bucket + max_key_size);
     fill_ht_str(bucket_key, key, key_size);
     fill_ht_str(bucket_value, value, value_size);
-    return True;
+    return true;
 }
 
-int ht_remove(hashtable *ht, const char *key, u_int32 key_size) {
-    size_t i = ht_position(ht, key, key_size, False); //'removed' bucket is not 'empty' when searching a chain.
+bool ht_remove(hashtable *ht, const char *key, uint32_t key_size) {
+    size_t i = ht_position(ht, key, key_size, false); //'removed' bucket is not 'empty' when searching a chain.
     if (ht_flag_base(ht)[i] != used) {
-        return False;
+        return false;
     }
     ht_flag_base(ht)[i] = removed;
     ht->size -= 1;
-    return True;
+    return true;
 }
 
-//don't forget to free(ht_iter)
 ht_iter* ht_get_iterator(hashtable *ht) {
     ht_iter* iter = ALLOC(ht_iter, 1);
     assert(iter != NULL);
     iter->ht    = ht;
     iter->pos   = -1;
     return iter;
+}
+
+void ht_free_iterator(ht_iter * iter) {
+	free(iter);
 }
 
 int ht_iter_next(ht_iter* iter) {
@@ -218,112 +216,14 @@ int ht_iter_next(ht_iter* iter) {
             char *bucket = bucket_base + i * bucket_size;
             iter->key = (ht_str*)bucket, iter->value = (ht_str*)(bucket + max_key_size);
             iter->pos = i;
-            return True;
+            return true;
         }
     }
-    return False;
+    return false;
 }
 
-int ht_destroy(hashtable *ht) {
+bool ht_destroy(hashtable *ht) {
     ht->ref_cnt -= 1;
-    return ht->ref_cnt == 0 ? True : False;
+    return ht->ref_cnt == 0 ? true : false;
 }
 
-/*
-
-//commented out together with 'main' to eliminate compiler's complaint
-static void dump_ht_str(ht_str *s) {
-    if (s) {
-        printf("%u: %*s\n", s->size, (int)s->size, s->str);
-    }
-    else {
-        printf("(nil)\n");
-    }
-}
-
-#include <sys/time.h>
-int main() {
-    size_t capacity = 500000;
-    printf("%u\n", ht_get_prime_by(capacity));
-    printf("%lu\n", ht_memory_size(capacity));
-    void *mem = malloc(ht_memory_size(capacity) + 1);
-    hashtable *ht = ht_init(mem, capacity, 0);
-
-    ht_set(ht, "hello", 5, "-----", 5);
-    ht_set(ht, "hello1", 6, "hello1", 6);
-    ht_set(ht, "hello", 5, "hello", 5);
-    ht_remove(ht, "hello", 5);
-
-    ht_str* s = NULL;
-    
-    s = ht_get(ht, "hello", 5);
-    dump_ht_str(s);
-
-    s = ht_get(ht, "hello1", 6);
-    dump_ht_str(s);
-
-    ht_set(ht, "a", 1, "a", 1);
-    ht_set(ht, "b", 1, "b", 1);
-    ht_set(ht, "c", 1, "c", 1);
-    ht_set(ht, "d", 1, "d", 1);
-    printf("ht->size: %lu\n", ht->size);
-
-    ht_remove(ht, "c", 1);
-
-    hashtable* ht1 = ht_init(mem, capacity, 0);
-
-    ht_iter* iter = ht_get_iterator(ht1);
-    while (ht_iter_next(iter)) {
-        ht_str *key = iter->key, *value = iter->value;
-        printf("%*s => %*s\n", (int)key->size, key->str, (int)value->size, value->str);
-    }
-    free(iter);
-    printf("ht_get_iterator test ok\n");
-
-    char x[128];
-    int i, len;
-    struct timeval begin, end;
-#define ts(tv) (tv.tv_sec + tv.tv_usec / 1000000.0)
-
-    gettimeofday(&begin, NULL);
-    for (i = 0; i < (int)capacity; i++) {
-        len = sprintf(x, "%064d", i);
-        if (ht_set(ht, x, len, x, len) == 0) {
-            printf("set wrong @ %d\n", i);
-            return 1;
-        }
-    }
-    gettimeofday(&end, NULL);
-    printf("set test: %.0lf iops\n", capacity / (ts(end) - ts(begin)));
-
-    gettimeofday(&begin, NULL);
-    for (i = 0; i < (int)capacity; i++) {
-        len = sprintf(x, "%064d", i);
-        ht_str* val = ht_get(ht, x, len);
-        if (val == NULL || !is_equal(x, len, val->str, val->size)) {
-            printf("(after set)get wrong @ %d\n", i);
-            return 1;
-        }
-    }
-    gettimeofday(&end, NULL);
-    printf("get test: %.0lf iops\n", capacity / (ts(end) - ts(begin)));
-
-    for (i = 0; i < (int)capacity; i += 2) {
-        len = sprintf(x, "%064d", i);
-        if (ht_remove(ht, x, len) == 0) {
-            printf("remove wrong @ %d\n", i);
-            return 1;
-        }
-        len = sprintf(x, "%064d", i + 1);
-        ht_str* val = ht_get(ht, x, len);
-        if (val == NULL || !is_equal(x, len, val->str, val->size)) {
-            printf("(after remove)get wrong @ %d\n", i);
-            return 1;
-        }
-    }
-    printf("remove/get test ok\n");
-
-    //while(1) sleep(1000);
-    return 0;
-}
-// */
