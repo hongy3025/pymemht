@@ -15,10 +15,11 @@ cdef extern from "hashtable.h":
     void ht_free_iterator(ht_iter * iter)
     int ht_iter_next(ht_iter* iter)
 
-    size_t ht_memory_size(size_t capacity)
-    hashtable* ht_init(void *base_addr, size_t capacity, int force_init)
+    size_t ht_memory_size(size_t max_key_size, size_t max_value_size, size_t capacity)
+    hashtable* ht_init(void *buff_base_addr, size_t buff_size, size_t max_key_size, size_t max_value_size, size_t capacity, int force_init)
     ht_str* ht_get(hashtable *ht, const char *key, uint32_t key_size)
     bint ht_set(hashtable *ht, const char *key, uint32_t key_size, const char *value, uint32_t value_size)
+    size_t ht_size(hashtable *ht)
     bint ht_remove(hashtable *ht, const char *key, uint32_t key_size)
     bint ht_destroy(hashtable *ht)
     bint ht_is_valid(hashtable *ht)

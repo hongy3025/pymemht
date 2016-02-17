@@ -12,19 +12,15 @@
 #define ht_flag_base(ht) ((char *)(ht) + (ht)->flag_offset)
 #define ht_bucket_base(ht) ((char *)(ht) + (ht)->bucket_offset)
 
-static const unsigned ht_magic = 0xBFBF;
+static const uint32_t ht_magic = 0xABCD;
 
 enum bucket_flag {
-    empty = 0, used = 1, removed = 2
+    empty = 0,
+   	used = 1,
+   	removed = 2,
 };
 
-
-size_t header_size = 1024;
-
-#define bucket_size     1280
-#define max_key_size    256
-#define max_value_size  (bucket_size - max_key_size)
-
+const size_t header_size = 1024;
 const float max_load_factor = 0.65f;
 
 static const unsigned int primes[] = { 
@@ -37,6 +33,10 @@ static const unsigned int primes[] = {
     805306457, 1610612741
 };
 static const unsigned int prime_table_length = sizeof (primes) / sizeof (primes[0]);
+
+static inline size_t round_up(size_t x) {
+	return (x / 4 + 1) * 4;
+}
 
 static inline void fill_ht_str(ht_str *s, const char *str, const uint32_t size) {
     s->size = size;
@@ -53,16 +53,18 @@ static unsigned int ht_get_prime_by(size_t capacity) {
     return 0;
 }
 
-size_t ht_memory_size(size_t capacity) {
+size_t ht_memory_size(size_t max_key_size, size_t max_value_size, size_t capacity) {
+	max_key_size = round_up(max_key_size);
+	max_value_size = round_up(max_value_size);
     const int flag_size = 1; //char
-    size_t aligned_capacity = (ht_get_prime_by(capacity) / 4 + 1) * 4; //round up to 4-byte alignment
+    size_t aligned_capacity = round_up(ht_get_prime_by(capacity));
     return header_size                      //header
          + flag_size * aligned_capacity     //flag
-         + bucket_size * aligned_capacity;  //bucket
+         + (max_key_size + max_value_size) * aligned_capacity;  //bucket
 }
 
 /*dbj2_hash function (copied from libshmht)*/
-static unsigned int dbj2_hash (const char *str, size_t size) {
+static unsigned int dbj2_hash(const char *str, size_t size) {
     unsigned long hash = 5381;
     while (size--) {
         char c = *str++;
@@ -81,12 +83,17 @@ bool ht_is_valid(hashtable *ht) {
     return (ht->magic == ht_magic);
 }
 
-/*
- * The caller is responsible for the 4-byte alignment of base_addr
- * and the size of base_addr should be no less than ht_get_prime_by(capacity)
- */
-hashtable* ht_init(void *base_addr, size_t capacity, int force_init) {
-    hashtable* ht = (hashtable *)base_addr;
+hashtable* ht_init(
+	void *buff_base_addr, size_t buff_size,
+   	size_t max_key_size, size_t max_value_size,
+	size_t capacity, int force_init) {
+
+	size_t need_size = ht_memory_size(max_key_size, max_value_size, capacity);
+	if (buff_size < need_size) {
+		return NULL;
+	}
+
+    hashtable* ht = (hashtable *)buff_base_addr;
     if (force_init || !ht_is_valid(ht)) {
         ht->magic     = ht_magic;
         ht->ref_cnt   = 0;
@@ -96,7 +103,11 @@ hashtable* ht_init(void *base_addr, size_t capacity, int force_init) {
         ht->size          = 0;
 
         ht->flag_offset   = header_size;
-        ht->bucket_offset = ht->flag_offset + (ht->capacity / 4 + 1) * 4; //alignment
+        ht->bucket_offset = ht->flag_offset + round_up(ht->capacity);
+
+		ht->max_key_size = round_up(max_key_size);
+		ht->max_value_size = round_up(max_value_size);
+		ht->bucket_size = ht->max_key_size + ht->max_value_size;
 
         memset(ht_flag_base(ht), 0, ht->capacity);
     }
@@ -118,7 +129,7 @@ static size_t ht_position(hashtable *ht, const char *key, uint32_t key_size, boo
             break;
         if (flag_base[i] == used)
         {
-            char *bucket = bucket_base + i * bucket_size;
+            char *bucket = bucket_base + i * ht->bucket_size;
             ht_str* bucket_key = (ht_str *)bucket;
             if (is_equal(key, key_size, bucket_key->str, bucket_key->size)) {
                 break;
@@ -140,14 +151,13 @@ ht_str* ht_get(hashtable *ht, const char *key, uint32_t key_size) {
     if (ht_flag_base(ht)[i] != used) {
         return NULL;
     }
-    char *bucket = ht_bucket_base(ht) + i * bucket_size;
-    return (ht_str*)(bucket + max_key_size);
+    char *bucket = ht_bucket_base(ht) + i * ht->bucket_size;
+    return (ht_str*)(bucket + ht->max_key_size);
 }
 
 bool ht_set(hashtable *ht, const char *key, uint32_t key_size, const char *value, uint32_t value_size) {
-    if (sizeof(uint32_t) + key_size >= max_key_size || sizeof(uint32_t) + value_size >= max_value_size) {
-        //the item is too large
-        fprintf(stderr, "the item is too large: key_size(%u), value(%u)\n", key_size, value_size);
+    if (sizeof(uint32_t) + key_size > ht->max_key_size || sizeof(uint32_t) + value_size > ht->max_value_size) {
+        fprintf(stderr, "the item is too large: key(%u), value(%u)\n", key_size, value_size);
         return false;
     }
 
@@ -175,9 +185,9 @@ bool ht_set(hashtable *ht, const char *key, uint32_t key_size, const char *value
     ht->size += 1;
     flag_base[i] = used;
 
-    char *bucket = bucket_base + i * bucket_size;
+    char *bucket = bucket_base + i * ht->bucket_size;
     bucket_key   = (ht_str*)bucket;
-    bucket_value = (ht_str*)(bucket + max_key_size);
+    bucket_value = (ht_str*)(bucket + ht->max_key_size);
     fill_ht_str(bucket_key, key, key_size);
     fill_ht_str(bucket_value, value, value_size);
     return true;
@@ -213,8 +223,8 @@ int ht_iter_next(ht_iter* iter) {
 
     for (i = iter->pos + 1; i < ht->capacity; i++) {
         if (flag_base[i] == used) {
-            char *bucket = bucket_base + i * bucket_size;
-            iter->key = (ht_str*)bucket, iter->value = (ht_str*)(bucket + max_key_size);
+            char *bucket = bucket_base + i * ht->bucket_size;
+            iter->key = (ht_str*)bucket, iter->value = (ht_str*)(bucket + ht->max_key_size);
             iter->pos = i;
             return true;
         }
@@ -227,3 +237,14 @@ bool ht_destroy(hashtable *ht) {
     return ht->ref_cnt == 0 ? true : false;
 }
 
+size_t ht_size(hashtable *ht) {
+	return ht->size;
+}
+
+size_t ht_max_key_length(hashtable *ht) {
+	return ht->max_key_size;
+}
+
+size_t ht_max_value_length(hashtable *ht) {
+	return ht->max_value_size;
+}
