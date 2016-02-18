@@ -1,5 +1,6 @@
 # distutils: language = c++
 
+import inspect
 from cpython.bytes cimport *
 from hashtable cimport *
 
@@ -39,7 +40,7 @@ cdef class MemoryHashTable(object):
             ht_destroy(self.ht)
         self.buf_obj = None
 
-    cpdef bytes get(self, bytes key):
+    cdef bytes _get(self, bytes key):
         cdef char * key_s = NULL
         cdef Py_ssize_t key_n = 0
         PyBytes_AsStringAndSize(key, &key_s, &key_n)
@@ -50,7 +51,7 @@ cdef class MemoryHashTable(object):
         cdef bytes result = value.str[:value.size]
         return result
 
-    cpdef int set(self, bytes key, bytes value) except? -1:
+    cdef int _set(self, bytes key, bytes value) except? -1:
         cdef char * key_s = NULL
         cdef Py_ssize_t key_n = 0
         PyBytes_AsStringAndSize(key, &key_s, &key_n)
@@ -63,7 +64,7 @@ cdef class MemoryHashTable(object):
             raise HashTableError('set hashable')
         return 0
 
-    cpdef int remove(self, bytes key) except? -1:
+    cdef int _remove(self, bytes key) except? -1:
         cdef char * key_s = NULL
         cdef Py_ssize_t key_n = 0
         PyBytes_AsStringAndSize(key, &key_s, &key_n)
@@ -73,20 +74,96 @@ cdef class MemoryHashTable(object):
             raise HashTableError('remove hashable key')
         return 0
 
-    cpdef bint has_key(self, bytes key):
+    cdef bint _has_key(self, bytes key):
         cdef bytes result = self.get(key)
         if result is None:
             return False
         return True
 
-    def __contains__(self, key):
-        return self.has_key(key)
+    def get(self, bytes key):
+        return self._get(key)
 
-    def __getitem__(self, key):
-        cdef result = self.get(key)
+    def set(self, bytes key, bytes value):
+        return self._set(key, value)
+
+    def has_key(self, bytes key):
+        return self._has_key(key)
+
+    def update(self, *args, **kwargs):
+        cdef object other
+        if kwargs:
+            for k, v in kwargs.iteritems():
+                self.set(k, v)
+        elif args:
+            other = args[0]
+            try:
+                for k, v in other.iteritems():
+                    self._set(k, v)
+            except:
+                for k, v in iter(other):
+                    self._set(k, v)
+
+    def pop(self, bytes key, bytes default=None):
+        cdef char * key_s = NULL
+        cdef Py_ssize_t key_n = 0
+        PyBytes_AsStringAndSize(key, &key_s, &key_n)
+
+        cdef bytes result
+        cdef ht_str *ht_value = ht_get(self.ht, key_s, key_n)
+        if ht_value == NULL:
+            if default is None:
+                raise KeyError('no such key')
+            else:
+                return default
+        else:
+            result = ht_value.str[:ht_value.size]
+            ht_remove(self.ht, key_s, key_n)
+            return result
+
+    def clear(self):
+        ht_clear(self.ht)
+
+    def __contains__(self, bytes key):
+        return self._has_key(key)
+
+    def __getitem__(self, bytes key):
+        cdef bytes result = self._get(key)
         if result is None:
             raise KeyError('no such key')
         return result
+
+    def __setitem__(self, bytes key, bytes value):
+        self._set(key, value)
+
+    def __delitem__(self, bytes key):
+        self._remove(key)
+
+    def __len__(self):
+        return ht_size(self.ht)
+
+    def iterkeys(self):
+        cdef ht_iter *iter = ht_get_iterator(self.ht)
+        cdef bytes pykey
+        cdef ht_str *key
+        try:
+            while ht_iter_next(iter):
+                key = iter.key
+                pykey = key.str[:key.size]
+                yield pykey
+        finally:
+            ht_free_iterator(iter)
+
+    def itervalues(self):
+        cdef ht_iter *iter = ht_get_iterator(self.ht)
+        cdef bytes pyvalue
+        cdef ht_str *value
+        try:
+            while ht_iter_next(iter):
+                value = iter.value
+                pyvalue = value.str[:value.size]
+                yield pyvalue
+        finally:
+            ht_free_iterator(iter)
 
     def iteritems(self):
         cdef ht_iter *iter = ht_get_iterator(self.ht)
@@ -104,9 +181,5 @@ cdef class MemoryHashTable(object):
         finally:
             ht_free_iterator(iter)
 
-    def __len__(self):
-        return ht_size(self.ht)
-
-
-
-
+def get_memory_size(size_t max_key_size, size_t max_value_size, size_t capacity):
+    return ht_memory_size(max_key_size, max_value_size, capacity)

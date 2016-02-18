@@ -2,8 +2,7 @@ from distutils.core import setup
 from distutils.extension import Extension
 
 ext_name = 'memht'
-# extra_compile_args = ['-Wno-unused-function', '-Wno-unneeded-internal-declaration']
-extra_compile_args = []
+extra_compile_args = ['-Wno-unused-function', '-Wno-unneeded-internal-declaration']
 
 try:
     from Cython.Build import cythonize

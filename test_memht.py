@@ -17,9 +17,13 @@ def init():
     m = memory_map('datafile')
     ht = memht.MemoryHashTable(m, 12, 4, 1000000)
     print 'create', ht
-    ht.set('hongy', 'aaaaa')
+    ht['hongy'] = 'aaaa'
+    for x in xrange(10):
+        ht[str(x)] = str(x)
     value = ht['hongy']
     print 'value of hongy', value
     print 'size of data tbl', len(ht)
+    for k, v in ht.iteritems():
+        print 'iter', k, v
 
 init()

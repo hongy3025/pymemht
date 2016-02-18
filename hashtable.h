@@ -40,6 +40,7 @@ void ht_free_iterator(ht_iter * iter);
 int ht_iter_next(ht_iter* iter);
 ht_str* ht_get(hashtable *ht, const char *key, uint32_t key_size);
 bool ht_set(hashtable *ht, const char *key, uint32_t key_size, const char *value, uint32_t value_size);
+void ht_clear(hashtable *ht);
 size_t ht_size(hashtable* ht);
 bool ht_remove(hashtable *ht, const char *key, uint32_t key_size);
 bool ht_destroy(hashtable *ht);

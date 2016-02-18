@@ -155,9 +155,13 @@ ht_str* ht_get(hashtable *ht, const char *key, uint32_t key_size) {
     return (ht_str*)(bucket + ht->max_key_size);
 }
 
+void ht_clear(hashtable *ht) {
+	ht->size = 0;
+	memset(ht_flag_base(ht), 0, ht->capacity);
+}
+
 bool ht_set(hashtable *ht, const char *key, uint32_t key_size, const char *value, uint32_t value_size) {
     if (sizeof(uint32_t) + key_size > ht->max_key_size || sizeof(uint32_t) + value_size > ht->max_value_size) {
-        fprintf(stderr, "the item is too large: key(%u), value(%u)\n", key_size, value_size);
         return false;
     }
 
@@ -177,8 +181,6 @@ bool ht_set(hashtable *ht, const char *key, uint32_t key_size, const char *value
     size_t i = ht_position(ht, key, key_size, true);
 
     if (ht->capacity * max_load_factor < ht->size) {
-        //hash table is over loaded
-        fprintf(stderr, "hash table is over loaded, capacity=%lu, size=%lu\n", ht->capacity, ht->size);
         return false;
     }
 

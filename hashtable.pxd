@@ -18,6 +18,7 @@ cdef extern from "hashtable.h":
     size_t ht_memory_size(size_t max_key_size, size_t max_value_size, size_t capacity)
     hashtable* ht_init(void *buff_base_addr, size_t buff_size, size_t max_key_size, size_t max_value_size, size_t capacity, int force_init)
     ht_str* ht_get(hashtable *ht, const char *key, uint32_t key_size)
+    void ht_clear(hashtable *ht)
     bint ht_set(hashtable *ht, const char *key, uint32_t key_size, const char *value, uint32_t value_size)
     size_t ht_size(hashtable *ht)
     bint ht_remove(hashtable *ht, const char *key, uint32_t key_size)
