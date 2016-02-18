@@ -39,8 +39,12 @@ except ImportError:
 class BuildExtSubclass(build_ext):
     def build_extensions(self):
         c = self.compiler.compiler_type
-        extra_copts = extra_compile_args.get(c, 'gcc')
-        extra_libs = extra_libraries.get(c, 'gcc')
+        extra_copts = extra_compile_args.get(c)
+        if extra_copts is None:
+            extra_copts = extra_compile_args.get('gcc')
+        extra_libs = extra_libraries.get(c)
+        if extra_libs is None:
+            extra_libs = extra_libraries.get('gcc')
         for e in self.extensions:
             e.extra_compile_args += extra_copts
             e.libraries += extra_libs
