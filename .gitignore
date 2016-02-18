@@ -3,3 +3,4 @@
 *.so
 build/
 memht.cpp
+named_sema.cpp

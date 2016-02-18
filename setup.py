@@ -7,6 +7,11 @@ extra_compile_args = {
     'gcc': ['-Wno-unused-function', '-Wno-unneeded-internal-declaration'],
 }
 
+extra_libraries = {
+    'msvc': ['Ws2_32'],
+    'gcc': [],
+}
+
 try:
     from Cython.Build import cythonize
     ext_modules = cythonize([
@@ -35,8 +40,10 @@ class BuildExtSubclass(build_ext):
     def build_extensions(self):
         c = self.compiler.compiler_type
         extra_copts = extra_compile_args.get(c, 'gcc')
+        extra_libs = extra_libraries.get(c, 'gcc')
         for e in self.extensions:
             e.extra_compile_args += extra_copts
+            e.libraries += extra_libs
         build_ext.build_extensions(self)
 
 setup(version='0.1',
