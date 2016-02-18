@@ -2,6 +2,12 @@
 
 cimport named_sema_c
 
+class NamedSemaphoreError(Exception):
+    pass
+
+class NamedSemaphoreTimeout(NamedSemaphoreError):
+    pass
+
 cdef class NamedSemaphore(object):
     cdef named_sema_c.NamedSemaphore * sema
 
@@ -13,17 +19,24 @@ cdef class NamedSemaphore(object):
             del self.sema
 
     def create(self, str name, long init_count, long max_count):
-        return self.sema.create(name, init_count, max_count)
+        if not self.sema.create(name, init_count, max_count):
+            raise NamedSemaphoreError('create')
 
     def open(self, str name):
-        return self.sema.open(name)
+        if not self.sema.open(name):
+            raise NamedSemaphoreError('open')
 
     def is_valid(self):
         return self.sema.is_valid()
 
     def wait(self, int timeout_msec=-1):
-        return self.sema.wait(timeout_msec)
+        result = self.sema.wait(timeout_msec)
+        if result == named_sema_c.SEMA_WAIT_TIMEOUT:
+            raise NamedSemaphoreTimeout('timeout')
+        elif result != named_sema_c.SEMA_WAIT_OK:
+            raise NamedSemaphoreError('wait')
 
     def post(self):
-        return self.sema.post()
+        if not self.sema.post():
+            raise NamedSemaphoreError('post')
 

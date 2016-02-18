@@ -9,6 +9,12 @@
 #include <semaphore.h>
 #endif
 
+enum SemaWaitResult {
+	SEMA_WAIT_OK = 0,
+	SEMA_WAIT_TIMEOUT = 1,
+	SEMA_WAIT_ERROR = 2,
+};
+
 #ifndef _WIN32
 #undef HAVE_SEM_TIMEDWAIT
 #ifndef HAVE_SEM_TIMEDWAIT
@@ -98,6 +104,10 @@ public:
 		}
 #else
 		this->sema = sem_open(name, O_CREAT|O_EXCL, 0644, init_count);
+		if (this->sema == SEM_FAILED && errno == EEXIST) {
+			sem_unlink(name);
+			this->sema = sem_open(name, O_CREAT|O_EXCL, 0644, init_count);
+		}
 		if (this->sema == SEM_FAILED) {
 			this->sema = NULL;
 			return false;
@@ -126,9 +136,9 @@ public:
 	bool is_valid() {
 		return sema != NULL;
 	}
-	bool wait(int timeout_msec) {
+	SemaWaitResult wait(int timeout_msec) {
 		if (!is_valid()) {
-			return false;
+			return SEMA_WAIT_ERROR;
 		}
 #ifdef _WIN32
 		DWORD timeout = INFINITE;
@@ -137,37 +147,40 @@ public:
 		}
 		DWORD result = WaitForSingleObject(this->sema, timeout);
 		if (result == WAIT_OBJECT_0) {
-			return true;
+			return SEMA_WAIT_OK;
+		} else if (result == WAIT_TIMEOUT) {
+			return SEMA_WAIT_TIMEOUT;
 		}
-		return false;
+		return SEMA_WAIT_ERROR;
 #else
 		int result;
-		do {
-			if (timeout_msec < 0) {
-				result = sem_wait(this->sema);
-			} else if (timeout_msec == 0) {
-				result = sem_trywait(this->sema);
-			} else {
-				struct timeval now;
-				struct timespec deadline = {0};
-				long sec, nsec;
-				if (gettimeofday(&now, NULL) < 0) {
-					return false;
-				}
-				double timeout = (double)timeout_msec / 1e3;
-				sec = (long) timeout;
-				nsec = (long) (1e9 * (timeout - sec) + 0.5);
-				deadline.tv_sec = now.tv_sec + sec;
-				deadline.tv_nsec = now.tv_usec * 1000 + nsec;
-				deadline.tv_sec += (deadline.tv_nsec / 1000000000);
-				deadline.tv_nsec %= 1000000000;
-				result = sem_timedwait(this->sema, &deadline);
+		if (timeout_msec < 0) {
+			result = sem_wait(this->sema);
+		} else if (timeout_msec == 0) {
+			result = sem_trywait(this->sema);
+		} else {
+			struct timeval now;
+			struct timespec deadline = {0};
+			long sec, nsec;
+			if (gettimeofday(&now, NULL) < 0) {
+				return SEMA_WAIT_ERROR;
 			}
-		} while (result < 0 && errno == EINTR);
-		if (result == 0) {
-			return true;
+			double timeout = (double)timeout_msec / 1e3;
+			sec = (long) timeout;
+			nsec = (long) (1e9 * (timeout - sec) + 0.5);
+			deadline.tv_sec = now.tv_sec + sec;
+			deadline.tv_nsec = now.tv_usec * 1000 + nsec;
+			deadline.tv_sec += (deadline.tv_nsec / 1000000000);
+			deadline.tv_nsec %= 1000000000;
+			result = sem_timedwait(this->sema, &deadline);
 		}
-		return false;
+		if (result == 0) {
+			return SEMA_WAIT_OK;
+		}
+		if (errno == ETIMEDOUT) {
+			return SEMA_WAIT_TIMEOUT;
+		}
+		return SEMA_WAIT_ERROR;
 #endif
 	}
 	bool post() {
