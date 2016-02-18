@@ -2,8 +2,6 @@ from distutils.core import setup
 from distutils.extension import Extension
 from distutils.command.build_ext import build_ext
 
-ext_name = 'memht'
-
 extra_compile_args = {
     'msvc': ['/wd4146'],
     'gcc': ['-Wno-unused-function', '-Wno-unneeded-internal-declaration'],
@@ -11,15 +9,27 @@ extra_compile_args = {
 
 try:
     from Cython.Build import cythonize
-    ext_modules = cythonize([Extension(
-        ext_name,
-        sources=['memht.pyx', 'hashtable.cpp'],
-    )])
+    ext_modules = cythonize([
+        Extension(
+            'memht',
+            sources=['memht.pyx', 'hashtable.cpp'],
+        ),
+        Extension(
+            'named_sema',
+            sources=['named_sema.pyx']
+        ),
+    ])
 except ImportError:
-    ext_modules = [Extension(
-        ext_name,
-        sources=['memht.cpp', 'hashtable.cpp'],
-    )]
+    ext_modules = [
+        Extension(
+            'memht',
+            sources=['memht.cpp', 'hashtable.cpp'],
+        ),
+        Extension(
+            'named_sema',
+            sources=['named_sema.cpp']
+        ),
+    ]
 
 class BuildExtSubclass(build_ext):
     def build_extensions(self):
